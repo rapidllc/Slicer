@@ -57,6 +57,9 @@
 // qMRML includes
 #include "qMRMLItemDelegate.h"
 
+// VTK includes
+#include <vtkIdList.h>
+
 //------------------------------------------------------------------------------
 /// \ingroup Slicer_QtModules_SubjectHierarchy
 class qMRMLSubjectHierarchyTreeViewPrivate
@@ -104,6 +107,9 @@ public:
   ///   Referenced SOP instance UIDs (in attribute named vtkMRMLSubjectHierarchyConstants::GetDICOMReferencedInstanceUIDsAttributeName())
   ///   -> SH node instance UIDs (serialized string lists in subject hierarchy UID vtkMRMLSubjectHierarchyConstants::GetDICOMInstanceUIDName())
   bool HighlightReferencedItems;
+
+  /// Cached list of selected items to return the current selection
+  QList<vtkIdType> SelectedItems;
 
   /// Cached list of highlighted items to speed up clearing highlight after new selection
   QList<vtkIdType> HighlightedItems;
@@ -342,7 +348,8 @@ void qMRMLSubjectHierarchyTreeView::setMRMLScene(vtkMRMLScene* scene)
 //------------------------------------------------------------------------------
 vtkIdType qMRMLSubjectHierarchyTreeView::currentItem()const
 {
-  return qSlicerSubjectHierarchyPluginHandler::instance()->currentItem();
+  Q_D(const qMRMLSubjectHierarchyTreeView);
+  return d->SelectedItems.count() ? d->SelectedItems[0] : vtkMRMLSubjectHierarchyNode::INVALID_ITEM_ID;
 }
 
 //------------------------------------------------------------------------------
@@ -357,6 +364,86 @@ void qMRMLSubjectHierarchyTreeView::setCurrentItem(vtkIdType itemID)
 
   QModelIndex itemIndex = d->SortFilterModel->indexFromSubjectHierarchyItem(itemID);
   this->selectionModel()->select(itemIndex, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+}
+
+//------------------------------------------------------------------------------
+QList<vtkIdType> qMRMLSubjectHierarchyTreeView::currentItems()
+{
+  Q_D(const qMRMLSubjectHierarchyTreeView);
+
+  QList<vtkIdType> selectedItems;
+  foreach (vtkIdType item, d->SelectedItems)
+    {
+    selectedItems << item;
+    }
+  return selectedItems;
+}
+
+//------------------------------------------------------------------------------
+void qMRMLSubjectHierarchyTreeView::currentItems(vtkIdList* selectedItems)
+{
+  Q_D(const qMRMLSubjectHierarchyTreeView);
+
+  if (!selectedItems)
+    {
+    qCritical() << Q_FUNC_INFO << ": Invalid item list";
+    return;
+    }
+
+  foreach (vtkIdType item, d->SelectedItems)
+    {
+    selectedItems->InsertNextId(item);
+    }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLSubjectHierarchyTreeView::setCurrentItems(QList<vtkIdType> items)
+{
+  Q_D(qMRMLSubjectHierarchyTreeView);
+  if (!d->SortFilterModel)
+    {
+    qCritical() << Q_FUNC_INFO << ": Invalid data model";
+    return;
+    }
+
+  this->selectionModel()->clearSelection();
+
+  foreach (long itemID, items)
+    {
+    QModelIndex itemIndex = d->SortFilterModel->indexFromSubjectHierarchyItem(vtkIdType(itemID));
+    if (itemIndex.isValid())
+      {
+      this->selectionModel()->select(itemIndex, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+      }
+    }
+}
+
+//------------------------------------------------------------------------------
+void qMRMLSubjectHierarchyTreeView::setCurrentItems(vtkIdList* items)
+{
+  Q_D(qMRMLSubjectHierarchyTreeView);
+  if (!d->SortFilterModel)
+    {
+    qCritical() << Q_FUNC_INFO << ": Invalid data model";
+    return;
+    }
+
+  if (!items)
+    {
+    qCritical() << Q_FUNC_INFO << ": Invalid item list";
+    return;
+    }
+
+  this->selectionModel()->clearSelection();
+
+  for (int index=0; index<items->GetNumberOfIds(); ++index)
+    {
+    QModelIndex itemIndex = d->SortFilterModel->indexFromSubjectHierarchyItem(items->GetId(index));
+    if (itemIndex.isValid())
+      {
+      this->selectionModel()->select(itemIndex, QItemSelectionModel::Select | QItemSelectionModel::Rows);
+      }
+    }
 }
 
 //--------------------------------------------------------------------------
@@ -761,6 +848,9 @@ void qMRMLSubjectHierarchyTreeView::onSelectionChanged(const QItemSelection& sel
   // Set current item(s) to plugin handler
   qSlicerSubjectHierarchyPluginHandler::instance()->setCurrentItems(selectedShItems);
 
+  // Cache selected item(s) so that currentItem and currentItems can return them quickly
+  d->SelectedItems = selectedShItems;
+
   // Highlight items referenced by DICOM in case of single-selection
   //   Referenced SOP instance UIDs (in attribute named vtkMRMLSubjectHierarchyConstants::GetDICOMReferencedInstanceUIDsAttributeName())
   //   -> SH item instance UIDs (serialized string lists in subject hierarchy UID vtkMRMLSubjectHierarchyConstants::GetDICOMInstanceUIDName())
@@ -922,21 +1012,6 @@ void qMRMLSubjectHierarchyTreeView::collapseItem(vtkIdType itemID)
     if (itemIndex.isValid())
       {
       this->collapse(itemIndex);
-      }
-    }
-}
-
-//--------------------------------------------------------------------------
-void qMRMLSubjectHierarchyTreeView::selectItems(QList<vtkIdType> itemIDs)
-{
-  Q_D(qMRMLSubjectHierarchyTreeView);
-  this->selectionModel()->clearSelection();
-  foreach (vtkIdType itemID, itemIDs)
-    {
-    QModelIndex itemIndex = d->SortFilterModel->indexFromSubjectHierarchyItem(itemID);
-    if (itemIndex.isValid())
-      {
-      this->selectionModel()->select(itemIndex, QItemSelectionModel::Select | QItemSelectionModel::Rows);
       }
     }
 }
@@ -1196,6 +1271,12 @@ void qMRMLSubjectHierarchyTreeView::setMultiSelection(bool multiSelectionOn)
     {
     this->setSelectionMode(QAbstractItemView::SingleSelection);
     }
+}
+
+//-----------------------------------------------------------------------------
+bool qMRMLSubjectHierarchyTreeView::multiSelection()
+{
+  return (this->selectionMode() == QAbstractItemView::ExtendedSelection);
 }
 
 //-----------------------------------------------------------------------------
