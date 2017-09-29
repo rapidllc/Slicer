@@ -42,14 +42,13 @@ if((NOT DEFINED LibArchive_INCLUDE_DIR
 
   ExternalProject_SetIfNotDefined(
     ${CMAKE_PROJECT_NAME}_${proj}_GIT_REPOSITORY
-    "${git_protocol}://github.com/libarchive/libarchive.git"
+    "${git_protocol}://github.com/Slicer/LibArchive.git"
     QUIET
     )
 
   ExternalProject_SetIfNotDefined(
     ${CMAKE_PROJECT_NAME}_${proj}_GIT_TAG
-    "v3.3.2"
-    QUIET
+    "43a14d4a097607d44c8741b24795d9ddc70b9be8" # master (v3.3.3) + patch disabling LHA (See #4407)    QUIET
     )
 
   ExternalProject_Add(${proj}
